@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 
 import streamlit as st
@@ -81,46 +82,240 @@ st.markdown(
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border-glow); border-radius: 3px; }
+
+/* ── Research paper ──────────────────────────────────────────────────────── */
+.report-wrapper {
+    background: #0f1117;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2.5rem 3rem;
+    max-width: 860px;
+    margin: 0 auto 1.5rem;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 0.97rem;
+    line-height: 1.85;
+    color: #dde3ef;
+}
+.report-wrapper h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.7rem; font-weight: 800; color: #e8ecf4;
+    margin: 0 0 0.75rem; line-height: 1.3;
+    border-bottom: 2px solid var(--border-glow); padding-bottom: 1rem;
+}
+.report-wrapper h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.05rem; font-weight: 700; color: var(--accent);
+    margin: 2.2rem 0 0.7rem;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    border-left: 3px solid var(--accent); padding-left: 0.75rem;
+}
+.report-wrapper h3 {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.95rem; font-weight: 600; color: #a8b8cc;
+    margin: 1.5rem 0 0.4rem;
+}
+.report-wrapper h4 { font-family: 'Inter', sans-serif; font-size: 0.9rem; font-weight: 600; color: #8898b8; margin: 1rem 0 0.3rem; }
+.report-wrapper p { margin: 0 0 1rem; text-align: justify; }
+.report-wrapper ul, .report-wrapper ol { padding-left: 1.6rem; margin: 0 0 1rem; }
+.report-wrapper li { margin-bottom: 0.35rem; }
+.report-wrapper a { color: var(--accent); text-decoration: underline; text-decoration-color: rgba(79,142,247,0.35); word-break: break-all; }
+.report-wrapper a:hover { text-decoration-color: var(--accent); }
+.report-wrapper table { width: 100%; border-collapse: collapse; margin: 1.2rem 0; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; }
+.report-wrapper th { background: #161a22; color: var(--accent); padding: 0.55rem 0.8rem; text-align: left; border: 1px solid var(--border-glow); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.68rem; }
+.report-wrapper td { padding: 0.45rem 0.8rem; border: 1px solid var(--border); vertical-align: top; color: #b0b8cc; word-break: break-word; }
+.report-wrapper tr:hover td { background: rgba(79,142,247,0.04); }
+.report-wrapper code { background: #1a1e2a; border: 1px solid var(--border); border-radius: 4px; padding: 0.12rem 0.38rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.82em; color: #7ec8e3; }
+.report-wrapper pre { background: #141820; border: 1px solid var(--border-glow); border-radius: 10px; padding: 1.1rem 1.3rem; overflow-x: auto; margin: 1.2rem 0; }
+.report-wrapper pre code { background: none; border: none; padding: 0; font-size: 0.84rem; color: #a8d8a8; }
+.report-wrapper blockquote { border-left: 3px solid var(--accent2); padding: 0.1rem 0 0.1rem 1rem; color: var(--text-muted); font-style: italic; margin: 1rem 0; }
+.report-wrapper hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+.report-wrapper strong { color: #e0e6f4; font-weight: 600; }
+.report-wrapper em { color: #c8d0e4; }
+
+/* ── Source card ──────────────────────────────────────────────────────────── */
+.source-card { background: #111318; border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 0.75rem; transition: border-color 0.2s; }
+.source-card:hover { border-color: var(--border-glow); }
+.source-number { font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem; color: var(--accent); font-weight: 600; margin-bottom: 0.3rem; }
+.source-query  { font-size: 0.85rem; color: #c0c8d8; margin-bottom: 0.4rem; font-weight: 500; }
+.source-snippet{ font-size: 0.78rem; color: var(--text-muted); line-height: 1.5; font-family: 'IBM Plex Mono', monospace; }
+.source-url    { font-size: 0.72rem; margin-top: 0.5rem; }
+.source-url a  { color: var(--accent3); text-decoration: none; word-break: break-all; }
+.source-url a:hover { text-decoration: underline; }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
 
-# ── Dependency checker ────────────────────────────────────────────────────────
-def check_dependencies() -> dict:
-    """Check which optional packages are available and return a status dict."""
-    deps = {}
+# ── Markdown → HTML (no extra deps) ──────────────────────────────────────────
+def md_to_html(md: str) -> str:
+    """Convert markdown to HTML for styled injection via unsafe_allow_html."""
+    import html as _html
 
-    # Search backends
+    def esc(s: str) -> str:
+        return _html.escape(s, quote=False)
+
+    def inline(s: str) -> str:
+        # inline code
+        s = re.sub(r'`([^`]+)`', lambda m: f'<code>{esc(m.group(1))}</code>', s)
+        # markdown links [text](url)
+        s = re.sub(
+            r'\[([^\]]+)\]\((https?://[^\)]+)\)',
+            lambda m: f'<a href="{m.group(2)}" target="_blank" rel="noopener">{esc(m.group(1))}</a>',
+            s,
+        )
+        # bare URLs
+        s = re.sub(
+            r'(?<!["\(=])(https?://[^\s<\)\]",]+)',
+            lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener">{m.group(1)}</a>',
+            s,
+        )
+        # bold
+        s = re.sub(r'\*\*(.+?)\*\*', lambda m: f'<strong>{m.group(1)}</strong>', s)
+        s = re.sub(r'__(.+?)__',     lambda m: f'<strong>{m.group(1)}</strong>', s)
+        # italic
+        s = re.sub(r'\*(.+?)\*', lambda m: f'<em>{m.group(1)}</em>', s)
+        s = re.sub(r'_(.+?)_',   lambda m: f'<em>{m.group(1)}</em>', s)
+        return s
+
+    def parse_table(rows: list[str]) -> str:
+        cells = [r.strip().strip("|").split("|") for r in rows]
+        if len(cells) < 2:
+            return ""
+        h = "".join(f"<th>{inline(c.strip())}</th>" for c in cells[0])
+        body_rows = []
+        for row in cells[2:]:
+            body_rows.append("<tr>" + "".join(f"<td>{inline(c.strip())}</td>" for c in row) + "</tr>")
+        return f"<table><thead><tr>{h}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
+
+    lines = md.split("\n")
+    out: list[str] = []
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # fenced code block
+        if stripped.startswith("```"):
+            lang = stripped[3:].strip()
+            code: list[str] = []
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith("```"):
+                code.append(esc(lines[i]))
+                i += 1
+            out.append(f'<pre><code class="language-{lang}">' + "\n".join(code) + "</code></pre>")
+            i += 1
+            continue
+
+        # table
+        if "|" in line and stripped.startswith("|"):
+            tbl: list[str] = []
+            while i < len(lines) and "|" in lines[i] and lines[i].strip().startswith("|"):
+                tbl.append(lines[i])
+                i += 1
+            out.append(parse_table(tbl))
+            continue
+
+        # horizontal rule
+        if re.match(r'^[-*_]{3,}\s*$', stripped):
+            out.append("<hr>")
+            i += 1
+            continue
+
+        # headings
+        m = re.match(r'^(#{1,6})\s+(.*)', line)
+        if m:
+            lvl = len(m.group(1))
+            out.append(f"<h{lvl}>{inline(m.group(2).strip())}</h{lvl}>")
+            i += 1
+            continue
+
+        # blockquote
+        if line.startswith("> "):
+            bq: list[str] = []
+            while i < len(lines) and lines[i].startswith("> "):
+                bq.append(inline(lines[i][2:]))
+                i += 1
+            out.append("<blockquote><p>" + "<br>".join(bq) + "</p></blockquote>")
+            continue
+
+        # unordered list
+        if re.match(r'^[-*+]\s', line):
+            out.append("<ul>")
+            while i < len(lines) and re.match(r'^[-*+]\s', lines[i]):
+                out.append(f"<li>{inline(lines[i][2:].strip())}</li>")
+                i += 1
+            out.append("</ul>")
+            continue
+
+        # ordered list
+        if re.match(r'^\d+\.\s', line):
+            out.append("<ol>")
+            while i < len(lines) and re.match(r'^\d+\.\s', lines[i]):
+                item = re.sub(r'^\d+\.\s+', '', lines[i])
+                out.append(f"<li>{inline(item)}</li>")
+                i += 1
+            out.append("</ol>")
+            continue
+
+        # blank line
+        if stripped == "":
+            i += 1
+            continue
+
+        # paragraph — collect consecutive "plain" lines
+        para: list[str] = []
+        while i < len(lines):
+            ln = lines[i]
+            s  = ln.strip()
+            if (not s
+                    or s.startswith("#")
+                    or s.startswith("```")
+                    or re.match(r'^[-*_]{3,}\s*$', s)
+                    or re.match(r'^[-*+]\s', ln)
+                    or re.match(r'^\d+\.\s', ln)
+                    or ("|" in ln and s.startswith("|"))
+                    or ln.startswith("> ")):
+                break
+            para.append(inline(ln))
+            i += 1
+        if para:
+            out.append("<p>" + " ".join(para) + "</p>")
+
+    return "\n".join(out)
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def check_dependencies() -> dict:
+    deps = {}
     try:
         from duckduckgo_search import DDGS  # noqa: F401
         deps["duckduckgo-search"] = ("ok", "Web search ✓")
     except ImportError:
         deps["duckduckgo-search"] = ("error", "pip install duckduckgo-search")
-
     try:
         import wikipedia  # noqa: F401
         deps["wikipedia"] = ("ok", "Wikipedia ✓")
     except ImportError:
         deps["wikipedia"] = ("error", "pip install wikipedia")
-
     try:
         import arxiv  # noqa: F401
         deps["arxiv"] = ("ok", "arXiv ✓")
     except ImportError:
         deps["arxiv"] = ("warn", "pip install arxiv  (optional)")
-
     try:
         from bs4 import BeautifulSoup  # noqa: F401
         deps["beautifulsoup4"] = ("ok", "Web scraping ✓")
     except ImportError:
         deps["beautifulsoup4"] = ("warn", "pip install beautifulsoup4  (optional)")
-
     return deps
 
 
-# ── Session state init ────────────────────────────────────────────────────────
+def extract_urls_from_text(text: str) -> list[str]:
+    return re.findall(r'https?://[^\s\)\]\,\"\']+', text)
+
+
 def init_session():
     defaults = {
         "research_state": None,
@@ -147,40 +342,20 @@ with st.sidebar:
         'color:#4f8ef7;margin-bottom:1rem;">⚙️ Configuration</div>',
         unsafe_allow_html=True,
     )
-
     st.markdown("**Ollama Model**")
-    model_choice = st.selectbox(
-        "Model",
-        [
-            # "llama3.2:3b", 
-            "llama3.2:1b", 
-            # "mistral", "qwen2.5", "gemma2", "phi3"
-        ],
-        label_visibility="collapsed",
-    )
-
+    model_choice = st.selectbox("Model", ["llama3.2:1b"], label_visibility="collapsed")
     st.markdown("**Ollama URL**")
-    ollama_url = st.text_input(
-        "Ollama URL", value="http://localhost:11434", label_visibility="collapsed",
-    )
-
+    ollama_url = st.text_input("Ollama URL", value="http://localhost:11434", label_visibility="collapsed")
     st.markdown("**Tavily API Key** *(optional, better search)*")
-    tavily_key = st.text_input(
-        "Tavily Key", type="password", placeholder="tvly-...", label_visibility="collapsed",
-    )
-
+    tavily_key = st.text_input("Tavily Key", type="password", placeholder="tvly-...", label_visibility="collapsed")
     st.divider()
-
     st.markdown("**Active Tools**")
-    use_web    = st.checkbox("🌐 Web Search",    value=True)
-    use_wiki   = st.checkbox("📖 Wikipedia",     value=True)
-    use_arxiv  = st.checkbox("📄 arXiv Papers",  value=True)
-    use_scrape = st.checkbox("🔗 Web Scraper",   value=True)
-    use_calc   = st.checkbox("🧮 Calculator",    value=True)
-
+    use_web    = st.checkbox("🌐 Web Search",   value=True)
+    use_wiki   = st.checkbox("📖 Wikipedia",    value=True)
+    use_arxiv  = st.checkbox("📄 arXiv Papers", value=True)
+    use_scrape = st.checkbox("🔗 Web Scraper",  value=True)
+    use_calc   = st.checkbox("🧮 Calculator",   value=True)
     st.divider()
-
-    # ── Dependency status panel ───────────────────────────────────────────────
     st.markdown("**Dependencies**")
     deps = check_dependencies()
     all_critical_ok = all(
@@ -188,25 +363,18 @@ with st.sidebar:
         for pkg, (status, _) in deps.items()
         if pkg in ("duckduckgo-search", "wikipedia")
     )
-
     for pkg, (status, msg) in deps.items():
-        css = {"ok": "dep-ok", "warn": "dep-warn", "error": "dep-err"}[status]
+        css  = {"ok": "dep-ok", "warn": "dep-warn", "error": "dep-err"}[status]
         icon = {"ok": "●", "warn": "◐", "error": "○"}[status]
         st.markdown(f'<div class="{css}">{icon} {msg}</div>', unsafe_allow_html=True)
-
     if not all_critical_ok:
         st.markdown(
             '<div style="margin-top:8px;padding:8px;background:#1a1215;border:1px solid #e76f5140;'
             'border-radius:8px;font-size:0.72rem;color:#e76f51;font-family:IBM Plex Mono,monospace;">'
-            '⚠️ Missing required packages.<br>Run in your terminal:<br><br>'
-            '<code>pip install duckduckgo-search wikipedia</code>'
-            '</div>',
+            '⚠️ Missing packages.<br>Run:<br><code>pip install duckduckgo-search wikipedia</code></div>',
             unsafe_allow_html=True,
         )
-
     st.divider()
-
-    # ── Ollama status ─────────────────────────────────────────────────────────
     st.markdown("**Ollama Status**")
     try:
         import requests as _req
@@ -222,7 +390,7 @@ with st.sidebar:
             st.markdown(
                 f'<div style="margin-top:6px;padding:6px 8px;background:#1a150a;border:1px solid #f4a26140;'
                 f'border-radius:8px;font-size:0.72rem;color:#f4a261;font-family:IBM Plex Mono,monospace;">'
-                f'⚠️ Model not found locally.<br>Run: <code>ollama pull {model_choice}</code></div>',
+                f'⚠️ Model not found.<br>Run: <code>ollama pull {model_choice}</code></div>',
                 unsafe_allow_html=True,
             )
     except Exception:
@@ -231,16 +399,14 @@ with st.sidebar:
             '<span style="color:#6b7890;font-size:0.72rem;">Run: <code>ollama serve</code></span>',
             unsafe_allow_html=True,
         )
-
     st.divider()
-
     st.markdown("**Research History**")
     if st.session_state.history:
-        for i, item in enumerate(reversed(st.session_state.history[-5:]), 1):
-            q_short = item["query"][:38] + ("…" if len(item["query"]) > 38 else "")
+        for idx, item in enumerate(reversed(st.session_state.history[-5:]), 1):
+            q = item["query"][:38] + ("…" if len(item["query"]) > 38 else "")
             st.markdown(
                 f'<div style="font-size:0.75rem;color:#6b7890;padding:4px 0;border-bottom:1px solid #1e2330;">'
-                f'{i}. {q_short}</div>',
+                f'{idx}. {q}</div>',
                 unsafe_allow_html=True,
             )
     else:
@@ -254,7 +420,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── Query input ───────────────────────────────────────────────────────────────
 col_input, col_btn = st.columns([5, 1])
 with col_input:
     query = st.text_input(
@@ -266,7 +431,6 @@ with col_input:
 with col_btn:
     start_btn = st.button("Research →", type="primary", use_container_width=True)
 
-# ── Example queries ───────────────────────────────────────────────────────────
 st.markdown(
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:0.5rem;margin-bottom:1rem;">'
     '<span style="font-size:0.72rem;color:#6b7890;">Try:</span>',
@@ -290,15 +454,12 @@ if st.session_state.pending_query and not st.session_state.is_running:
     start_btn = True
     st.session_state.pending_query = ""
 
-# ── Block run if critical dependencies missing ────────────────────────────────
 if start_btn and not all_critical_ok:
     st.error(
-        "⛔ Cannot run research — required packages are missing.\n\n"
-        "Open a terminal in your project folder and run:\n"
-        "```\npip install duckduckgo-search wikipedia\n```\n"
-        "Then restart Streamlit."
+        "⛔ Cannot run — required packages missing.\n\n"
+        "```\npip install duckduckgo-search wikipedia\n```\nThen restart Streamlit."
     )
-    start_btn = False  # prevent the run from starting
+    start_btn = False
 
 
 # ── Pipeline visualizer ───────────────────────────────────────────────────────
@@ -306,9 +467,9 @@ def render_pipeline(statuses: dict[str, str]):
     icons  = {"planner": "📋", "researcher": "🔍", "analyst": "🔬", "writer": "✍️"}
     labels = {"planner": "Planner", "researcher": "Researcher", "analyst": "Analyst", "writer": "Writer"}
     pills  = ""
-    for i, agent in enumerate(statuses):
+    for idx, agent in enumerate(statuses):
         pills += f'<div class="agent-pill {statuses[agent]}">{icons[agent]} {labels[agent]}</div>'
-        if i < len(statuses) - 1:
+        if idx < len(statuses) - 1:
             pills += '<span class="arrow">→</span>'
     st.markdown(f'<div class="agent-pipeline">{pills}</div>', unsafe_allow_html=True)
 
@@ -372,7 +533,6 @@ def run_research_with_updates(research_query: str):
         st.session_state.is_running = False
 
 
-# ── Kick off ──────────────────────────────────────────────────────────────────
 if start_btn and query and not st.session_state.is_running:
     st.session_state["active_query"] = query
     st.session_state.is_running      = True
@@ -391,10 +551,8 @@ if st.session_state.is_running:
         st.rerun()
     else:
         st.session_state.is_running = False
-        st.error("No query found. Please enter a research question and try again.")
+        st.error("No query found.")
 
-
-# ── Error display ─────────────────────────────────────────────────────────────
 if st.session_state.error_msg:
     st.error(f"❌ {st.session_state.error_msg}")
 
@@ -414,44 +572,70 @@ if state := st.session_state.research_state:
     ]:
         with col:
             st.markdown(
-                f'<div class="metric-card">'
-                f'<div class="metric-value">{val}</div>'
+                f'<div class="metric-card"><div class="metric-value">{val}</div>'
                 f'<div class="metric-label">{label}</div></div>',
                 unsafe_allow_html=True,
             )
 
-    st.markdown("")
+    st.markdown("<br>", unsafe_allow_html=True)
 
     tab_report, tab_analysis, tab_plan, tab_sources, tab_raw = st.tabs(
-        ["📄 Final Report", "🔬 Analysis", "📋 Research Plan", "🗂 Sources", "⚙️ Raw State"]
+        ["📄 Research Paper", "🔬 Analysis", "📋 Research Plan", "🗂 Sources", "⚙️ Raw State"]
     )
 
+    # ── Research Paper ────────────────────────────────────────────────────────
     with tab_report:
         if report:
-            st.markdown(report)
-            st.download_button(
-                "⬇️ Download Report (.md)", data=report,
-                file_name=f"research_report_{int(time.time())}.md", mime="text/markdown",
+            # Key fix: convert markdown to HTML first, then inject as ONE block
+            # so .report-wrapper CSS is the actual parent of all content.
+            report_html = md_to_html(report)
+            st.markdown(
+                f'<div class="report-wrapper">{report_html}</div>',
+                unsafe_allow_html=True,
             )
+            col_dl1, col_dl2, _sp = st.columns([1, 1, 3])
+            with col_dl1:
+                st.download_button(
+                    "⬇️ Download (.md)", data=report,
+                    file_name=f"research_paper_{int(time.time())}.md",
+                    mime="text/markdown", use_container_width=True,
+                )
+            with col_dl2:
+                st.download_button(
+                    "⬇️ Download (.txt)", data=report,
+                    file_name=f"research_paper_{int(time.time())}.txt",
+                    mime="text/plain", use_container_width=True,
+                )
         else:
             st.info("No report generated yet.")
 
+    # ── Analysis ──────────────────────────────────────────────────────────────
     with tab_analysis:
         analysis = state.get("analysis")
-        # st.markdown(analysis) if analysis else st.info("No analysis available.")
         if analysis:
-            st.markdown(analysis)
+            st.markdown(
+                f'<div style="background:#111318;border:1px solid #1e2330;border-radius:12px;'
+                f'padding:1.5rem 2rem;font-family:Georgia,serif;font-size:0.95rem;'
+                f'line-height:1.8;color:#dde3ef;">{md_to_html(analysis)}</div>',
+                unsafe_allow_html=True,
+            )
         else:
             st.info("No analysis available.")
 
+    # ── Plan ──────────────────────────────────────────────────────────────────
     with tab_plan:
         plan = state.get("research_plan")
-        # st.markdown(plan) if plan else st.info("No plan available.")
         if plan:
-            st.markdown(plan)
+            st.markdown(
+                f'<div style="background:#111318;border:1px solid #1e2330;border-radius:12px;'
+                f'padding:1.5rem 2rem;font-family:Georgia,serif;font-size:0.95rem;'
+                f'line-height:1.8;color:#dde3ef;">{md_to_html(plan)}</div>',
+                unsafe_allow_html=True,
+            )
         else:
             st.info("No plan available.")
 
+    # ── Sources ───────────────────────────────────────────────────────────────
     with tab_sources:
         if results:
             badges = " ".join(
@@ -459,17 +643,40 @@ if state := st.session_state.research_state:
                 for t in tools_used
             )
             st.markdown(badges, unsafe_allow_html=True)
-            st.markdown("")
+            st.markdown("<br>", unsafe_allow_html=True)
+
             for i, r in enumerate(results, 1):
-                with st.expander(f"**{i}.** `{r['tool']}` — {str(r.get('args',''))[:80]}", expanded=False):
-                    st.markdown(
-                        f'<span class="tool-badge tool-{r["tool"]}">{r["tool"]}</span>',
-                        unsafe_allow_html=True,
+                urls = extract_urls_from_text(r.get("result", ""))
+                url_html = ""
+                if urls:
+                    links = " · ".join(
+                        f'<a href="{u}" target="_blank" rel="noopener">'
+                        f'🔗 {u[:65]}{"…" if len(u) > 65 else ""}</a>'
+                        for u in urls[:3]
                     )
-                    st.code(r.get("result", "")[:1500], language="text")
+                    url_html = f'<div class="source-url">{links}</div>'
+
+                snippet_lines = [
+                    ln for ln in r.get("result", "").splitlines()
+                    if ln.strip() and not ln.strip().startswith("http")
+                ]
+                snippet_text = " ".join(snippet_lines)[:300]
+                query_display = str(r.get("args", ""))
+
+                st.markdown(
+                    f'<div class="source-card">'
+                    f'<div class="source-number">SOURCE {i} · '
+                    f'<span class="tool-badge tool-{r["tool"]}">{r["tool"].replace("_"," ")}</span></div>'
+                    f'<div class="source-query">Query: {query_display}</div>'
+                    f'<div class="source-snippet">{snippet_text}…</div>'
+                    f'{url_html}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
         else:
             st.info("No sources collected.")
 
+    # ── Raw State ─────────────────────────────────────────────────────────────
     with tab_raw:
         st.markdown("**Full ResearchState**")
         st.json({k: v for k, v in state.items() if k != "messages"})
@@ -495,6 +702,7 @@ elif not st.session_state.is_running:
         'Enter a research query to begin</div>'
         '<div style="font-size:0.85rem;max-width:480px;margin:0 auto;line-height:1.7;">'
         'The assistant will plan your research, gather information from multiple sources, '
-        'analyze the findings, and produce a comprehensive report — all automatically.</div></div>',
+        'analyze the findings, and produce a comprehensive academic research paper — all automatically.'
+        '</div></div>',
         unsafe_allow_html=True,
     )

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
 from langchain_ollama import ChatOllama
 
@@ -12,7 +14,7 @@ from config.settings import OLLAMA_BASE_URL, OLLAMA_MODEL
 SYSTEM_PROMPT = """You are a Research Analyst. You will be given raw search results.
 Your job is to extract and organize the key information.
 
-Write your analysis with these sections:
+Write your analysis with these FOUR sections and NO MORE:
 ## Key Findings
 (The most important facts from the sources — be specific, cite numbers/dates where available)
 
@@ -25,7 +27,87 @@ Write your analysis with these sections:
 ## Notable Facts
 (Specific data points, statistics, names, dates worth highlighting)
 
-Be factual and specific. Do not invent information not present in the sources."""
+IMPORTANT RULES:
+- Write each section ONCE. Do NOT repeat any section.
+- Stop writing after ## Notable Facts is complete.
+- Do not add conclusions, recommendations, or extra sections.
+- Be factual and specific. Do not invent information not present in the sources."""
+
+
+def _deduplicate_analysis(text: str) -> str:
+    """
+    Remove repeated sections that small models (llama3.2:1b) tend to emit.
+
+    Strategy:
+    1. Keep only the FIRST occurrence of each ## heading block.
+    2. Remove duplicate paragraphs (exact or near-exact).
+    3. Hard-stop after the last expected section.
+    """
+    if not text:
+        return text
+
+    # ── Step 1: keep only the first occurrence of each ## section ────────────
+    seen_headings: set[str] = set()
+    lines = text.split("\n")
+    filtered: list[str] = []
+    skip_until_next_heading = False
+    current_heading: str | None = None
+
+    for line in lines:
+        heading_match = re.match(r'^(#{1,3})\s+(.*)', line)
+        if heading_match:
+            heading_text = heading_match.group(2).strip().lower()
+            # Normalize slight variations (e.g. "Key Findings" vs "Key findings")
+            canonical = re.sub(r'[^a-z0-9 ]', '', heading_text)
+            if canonical in seen_headings:
+                # Duplicate heading — skip this whole block
+                skip_until_next_heading = True
+                current_heading = canonical
+                continue
+            else:
+                seen_headings.add(canonical)
+                skip_until_next_heading = False
+                current_heading = canonical
+                filtered.append(line)
+        else:
+            if not skip_until_next_heading:
+                filtered.append(line)
+
+    deduped_by_heading = "\n".join(filtered)
+
+    # ── Step 2: remove duplicate paragraphs ──────────────────────────────────
+    paragraphs = re.split(r'\n{2,}', deduped_by_heading)
+    seen_paragraphs: set[str] = set()
+    unique_paragraphs: list[str] = []
+
+    for para in paragraphs:
+        # Normalize for comparison: lowercase, collapse whitespace
+        norm = re.sub(r'\s+', ' ', para.strip().lower())
+        if len(norm) < 20:
+            # Keep short lines (headings, bullets, blanks) unconditionally
+            unique_paragraphs.append(para)
+            continue
+        if norm not in seen_paragraphs:
+            seen_paragraphs.add(norm)
+            unique_paragraphs.append(para)
+        # else: silently drop the duplicate paragraph
+
+    result = "\n\n".join(unique_paragraphs)
+
+    # ── Step 3: hard-stop after the last expected section ────────────────────
+    # Expected order: Key Findings → Main Themes → Gaps & Uncertainties → Notable Facts
+    # If the model kept going past Notable Facts, chop it there.
+    stop_after_pattern = re.compile(
+        r'(##\s*Notable Facts.*?)(\n##\s+(?!Notable Facts))',
+        re.DOTALL | re.IGNORECASE,
+    )
+    match = stop_after_pattern.search(result)
+    if match:
+        # Find where the unwanted heading starts and truncate
+        cut_pos = match.start(2)
+        result = result[:cut_pos].rstrip()
+
+    return result.strip()
 
 
 def analyst_node(state: ResearchState) -> ResearchState:
@@ -35,7 +117,7 @@ def analyst_node(state: ResearchState) -> ResearchState:
         base_url=OLLAMA_BASE_URL,
         model=OLLAMA_MODEL,
         temperature=0.1,
-        num_predict=1536,
+        num_predict=1024,   # Reduced from 1536 — less room for the model to ramble
     )
 
     query = state["query"]
@@ -51,16 +133,13 @@ def analyst_node(state: ResearchState) -> ResearchState:
         }
 
     # Format sources — give the analyst the FULL result text (up to a safe cap)
-    # so it has real content to work with rather than truncated snippets.
-    # We budget ~300 tokens per source; 6 sources × 300 ≈ 1800 tokens input.
     source_blocks = []
     total_chars = 0
-    char_budget = 8000  # roughly 2000 tokens, safe for 8 GB machines
+    char_budget = 6000  # Tightened slightly to keep the prompt smaller for 1b model
 
     for i, r in enumerate(results, 1):
         header = f"[Source {i}: {r['tool']} | query: {r['args']}]"
         content = r["result"]
-        # How much of this source can we still fit?
         remaining = char_budget - total_chars
         if remaining <= 100:
             break
@@ -77,7 +156,8 @@ def analyst_node(state: ResearchState) -> ResearchState:
             content=(
                 f"Research query: {query}\n\n"
                 f"=== RAW SOURCES ===\n{sources_text}\n=== END SOURCES ===\n\n"
-                "Write a structured analysis of the above sources."
+                "Write a structured analysis with EXACTLY the four sections listed above. "
+                "Write each section once and then STOP."
             )
         ),
     ]
@@ -88,6 +168,9 @@ def analyst_node(state: ResearchState) -> ResearchState:
 
         if len(analysis) < 50:
             analysis = f"Analysis could not be generated. Raw sources collected: {len(results)}."
+        else:
+            # Post-process to remove repetition introduced by small models
+            analysis = _deduplicate_analysis(analysis)
 
         return {
             **state,
