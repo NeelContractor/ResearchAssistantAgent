@@ -6,6 +6,7 @@ import re
 import time
 
 import streamlit as st
+from config.settings import OLLAMA_BASE_URL, OLLAMA_MODEL
 
 st.set_page_config(
     page_title="Research Assistant",
@@ -342,10 +343,12 @@ with st.sidebar:
         'color:#4f8ef7;margin-bottom:1rem;">⚙️ Configuration</div>',
         unsafe_allow_html=True,
     )
-    st.markdown("**Ollama Model**")
-    model_choice = st.selectbox("Model", ["llama3.2:1b"], label_visibility="collapsed")
-    st.markdown("**Ollama URL**")
-    ollama_url = st.text_input("Ollama URL", value="http://localhost:11434", label_visibility="collapsed")
+    # st.markdown("**Ollama Model**")
+    # model_choice = st.selectbox("Model", ["llama3.2:1b"], label_visibility="collapsed")
+    # st.markdown("**Ollama URL**")
+    # ollama_url = st.text_input("Ollama URL", value="http://localhost:11434", label_visibility="collapsed")
+    model_choice = OLLAMA_MODEL
+    ollama_url = OLLAMA_BASE_URL
     st.markdown("**Tavily API Key** *(optional, better search)*")
     tavily_key = st.text_input("Tavily Key", type="password", placeholder="tvly-...", label_visibility="collapsed")
     st.divider()
@@ -381,9 +384,14 @@ with st.sidebar:
         r = _req.get(f"{ollama_url}/api/tags", timeout=3)
         available_models = [m["name"] for m in r.json().get("models", [])]
         model_present = any(model_choice in m for m in available_models)
+        # st.markdown(
+        #     f'<span style="color:#2ec4b6;font-size:0.8rem;">● Connected</span><br>'
+        #     f'<span style="color:#6b7890;font-size:0.72rem;">{len(available_models)} model(s)</span>',
+        #     unsafe_allow_html=True,
+        # )
         st.markdown(
             f'<span style="color:#2ec4b6;font-size:0.8rem;">● Connected</span><br>'
-            f'<span style="color:#6b7890;font-size:0.72rem;">{len(available_models)} model(s)</span>',
+            f'<span style="color:#6b7890;font-size:0.72rem;">Model: {model_choice}</span>',
             unsafe_allow_html=True,
         )
         if not model_present:
@@ -590,7 +598,9 @@ if state := st.session_state.research_state:
             # so .report-wrapper CSS is the actual parent of all content.
             report_html = md_to_html(report)
             st.markdown(
-                f'<div class="report-wrapper">{report_html}</div>',
+                f'<div style="background:#111318;border:1px solid #1e2330;border-radius:12px;'
+                f'padding:1.5rem 2rem;font-family:Georgia,serif;font-size:0.95rem;'
+                f'line-height:1.8;color:#dde3ef;">{report_html}</div>',
                 unsafe_allow_html=True,
             )
             col_dl1, col_dl2, _sp = st.columns([1, 1, 3])
