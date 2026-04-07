@@ -6,7 +6,7 @@ import re
 import time
 
 import streamlit as st
-from config.settings import OLLAMA_BASE_URL, OLLAMA_MODEL
+from config.settings import GROQ_MODEL
 
 st.set_page_config(
     page_title="Research Assistant",
@@ -148,33 +148,27 @@ st.markdown(
 )
 
 
-# ── Markdown → HTML (no extra deps) ──────────────────────────────────────────
+# ── Markdown → HTML ───────────────────────────────────────────────────────────
 def md_to_html(md: str) -> str:
-    """Convert markdown to HTML for styled injection via unsafe_allow_html."""
     import html as _html
 
     def esc(s: str) -> str:
         return _html.escape(s, quote=False)
 
     def inline(s: str) -> str:
-        # inline code
         s = re.sub(r'`([^`]+)`', lambda m: f'<code>{esc(m.group(1))}</code>', s)
-        # markdown links [text](url)
         s = re.sub(
             r'\[([^\]]+)\]\((https?://[^\)]+)\)',
             lambda m: f'<a href="{m.group(2)}" target="_blank" rel="noopener">{esc(m.group(1))}</a>',
             s,
         )
-        # bare URLs
         s = re.sub(
             r'(?<!["\(=])(https?://[^\s<\)\]",]+)',
             lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener">{m.group(1)}</a>',
             s,
         )
-        # bold
         s = re.sub(r'\*\*(.+?)\*\*', lambda m: f'<strong>{m.group(1)}</strong>', s)
         s = re.sub(r'__(.+?)__',     lambda m: f'<strong>{m.group(1)}</strong>', s)
-        # italic
         s = re.sub(r'\*(.+?)\*', lambda m: f'<em>{m.group(1)}</em>', s)
         s = re.sub(r'_(.+?)_',   lambda m: f'<em>{m.group(1)}</em>', s)
         return s
@@ -197,7 +191,6 @@ def md_to_html(md: str) -> str:
         line = lines[i]
         stripped = line.strip()
 
-        # fenced code block
         if stripped.startswith("```"):
             lang = stripped[3:].strip()
             code: list[str] = []
@@ -209,7 +202,6 @@ def md_to_html(md: str) -> str:
             i += 1
             continue
 
-        # table
         if "|" in line and stripped.startswith("|"):
             tbl: list[str] = []
             while i < len(lines) and "|" in lines[i] and lines[i].strip().startswith("|"):
@@ -218,13 +210,11 @@ def md_to_html(md: str) -> str:
             out.append(parse_table(tbl))
             continue
 
-        # horizontal rule
         if re.match(r'^[-*_]{3,}\s*$', stripped):
             out.append("<hr>")
             i += 1
             continue
 
-        # headings
         m = re.match(r'^(#{1,6})\s+(.*)', line)
         if m:
             lvl = len(m.group(1))
@@ -232,7 +222,6 @@ def md_to_html(md: str) -> str:
             i += 1
             continue
 
-        # blockquote
         if line.startswith("> "):
             bq: list[str] = []
             while i < len(lines) and lines[i].startswith("> "):
@@ -241,7 +230,6 @@ def md_to_html(md: str) -> str:
             out.append("<blockquote><p>" + "<br>".join(bq) + "</p></blockquote>")
             continue
 
-        # unordered list
         if re.match(r'^[-*+]\s', line):
             out.append("<ul>")
             while i < len(lines) and re.match(r'^[-*+]\s', lines[i]):
@@ -250,7 +238,6 @@ def md_to_html(md: str) -> str:
             out.append("</ul>")
             continue
 
-        # ordered list
         if re.match(r'^\d+\.\s', line):
             out.append("<ol>")
             while i < len(lines) and re.match(r'^\d+\.\s', lines[i]):
@@ -260,12 +247,10 @@ def md_to_html(md: str) -> str:
             out.append("</ol>")
             continue
 
-        # blank line
         if stripped == "":
             i += 1
             continue
 
-        # paragraph — collect consecutive "plain" lines
         para: list[str] = []
         while i < len(lines):
             ln = lines[i]
@@ -343,14 +328,20 @@ with st.sidebar:
         'color:#4f8ef7;margin-bottom:1rem;">⚙️ Configuration</div>',
         unsafe_allow_html=True,
     )
-    # st.markdown("**Ollama Model**")
-    # model_choice = st.selectbox("Model", ["llama3.2:1b"], label_visibility="collapsed")
-    # st.markdown("**Ollama URL**")
-    # ollama_url = st.text_input("Ollama URL", value="http://localhost:11434", label_visibility="collapsed")
-    model_choice = OLLAMA_MODEL
-    ollama_url = OLLAMA_BASE_URL
+
+    st.markdown("**Model**")
+    st.markdown(
+        f'<span style="color:#2ec4b6;font-size:0.85rem;font-family:IBM Plex Mono,monospace;">'
+        f'● {GROQ_MODEL}</span>',
+        unsafe_allow_html=True,
+    )
+
+    st.divider()
     st.markdown("**Tavily API Key** *(optional, better search)*")
-    tavily_key = st.text_input("Tavily Key", type="password", placeholder="tvly-...", label_visibility="collapsed")
+    tavily_key = st.text_input(
+        "Tavily Key", type="password", placeholder="tvly-...", label_visibility="collapsed"
+    )
+
     st.divider()
     st.markdown("**Active Tools**")
     use_web    = st.checkbox("🌐 Web Search",   value=True)
@@ -358,6 +349,7 @@ with st.sidebar:
     use_arxiv  = st.checkbox("📄 arXiv Papers", value=True)
     use_scrape = st.checkbox("🔗 Web Scraper",  value=True)
     use_calc   = st.checkbox("🧮 Calculator",   value=True)
+
     st.divider()
     st.markdown("**Dependencies**")
     deps = check_dependencies()
@@ -377,54 +369,28 @@ with st.sidebar:
             '⚠️ Missing packages.<br>Run:<br><code>pip install duckduckgo-search wikipedia</code></div>',
             unsafe_allow_html=True,
         )
-    st.divider()
-    st.markdown("**Ollama Status**")
-    try:
-        import requests as _req
-        r = _req.get(f"{ollama_url}/api/tags", timeout=3)
-        available_models = [m["name"] for m in r.json().get("models", [])]
-        model_present = any(model_choice in m for m in available_models)
-        # st.markdown(
-        #     f'<span style="color:#2ec4b6;font-size:0.8rem;">● Connected</span><br>'
-        #     f'<span style="color:#6b7890;font-size:0.72rem;">{len(available_models)} model(s)</span>',
-        #     unsafe_allow_html=True,
-        # )
-        st.markdown(
-            f'<span style="color:#2ec4b6;font-size:0.8rem;">● Connected</span><br>'
-            f'<span style="color:#6b7890;font-size:0.72rem;">Model: {model_choice}</span>',
-            unsafe_allow_html=True,
-        )
-        if not model_present:
-            st.markdown(
-                f'<div style="margin-top:6px;padding:6px 8px;background:#1a150a;border:1px solid #f4a26140;'
-                f'border-radius:8px;font-size:0.72rem;color:#f4a261;font-family:IBM Plex Mono,monospace;">'
-                f'⚠️ Model not found.<br>Run: <code>ollama pull {model_choice}</code></div>',
-                unsafe_allow_html=True,
-            )
-    except Exception:
-        st.markdown(
-            '<span style="color:#e76f51;font-size:0.8rem;">● Not reachable</span><br>'
-            '<span style="color:#6b7890;font-size:0.72rem;">Run: <code>ollama serve</code></span>',
-            unsafe_allow_html=True,
-        )
+
     st.divider()
     st.markdown("**Research History**")
     if st.session_state.history:
         for idx, item in enumerate(reversed(st.session_state.history[-5:]), 1):
             q = item["query"][:38] + ("…" if len(item["query"]) > 38 else "")
             st.markdown(
-                f'<div style="font-size:0.75rem;color:#6b7890;padding:4px 0;border-bottom:1px solid #1e2330;">'
-                f'{idx}. {q}</div>',
+                f'<div style="font-size:0.75rem;color:#6b7890;padding:4px 0;'
+                f'border-bottom:1px solid #1e2330;">{idx}. {q}</div>',
                 unsafe_allow_html=True,
             )
     else:
-        st.markdown('<div style="font-size:0.75rem;color:#6b7890;">No history yet</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div style="font-size:0.75rem;color:#6b7890;">No history yet</div>',
+            unsafe_allow_html=True,
+        )
 
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown('<div class="app-header">🔬 Research Assistant</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="app-subtitle">multi-agent · langgraph + ollama · powered by local LLMs</div>',
+    '<div class="app-subtitle">multi-agent · langgraph + groq · powered by llama-3.3-70b</div>',
     unsafe_allow_html=True,
 )
 
@@ -487,14 +453,10 @@ render_pipeline(st.session_state.agent_statuses)
 
 # ── Research runner ───────────────────────────────────────────────────────────
 def run_research_with_updates(research_query: str):
-    import os, importlib
-    os.environ["OLLAMA_BASE_URL"] = ollama_url
-    os.environ["OLLAMA_MODEL"]    = model_choice
+    import os
+
     if tavily_key:
         os.environ["TAVILY_API_KEY"] = tavily_key
-
-    import config.settings as cfg_mod
-    importlib.reload(cfg_mod)
 
     from tools import research_tools as rt
     tools_active = []
@@ -573,9 +535,9 @@ if state := st.session_state.research_state:
 
     m1, m2, m3, m4 = st.columns(4)
     for col, val, label in [
-        (m1, len(results),           "Sources Found"),
-        (m2, len(tools_used),        "Tools Used"),
-        (m3, len(report.split()),    "Words in Report"),
+        (m1, len(results),                    "Sources Found"),
+        (m2, len(tools_used),                 "Tools Used"),
+        (m3, len(report.split()),             "Words in Report"),
         (m4, f"{st.session_state.run_time:.1f}s", "Total Time"),
     ]:
         with col:
@@ -594,8 +556,6 @@ if state := st.session_state.research_state:
     # ── Research Paper ────────────────────────────────────────────────────────
     with tab_report:
         if report:
-            # Key fix: convert markdown to HTML first, then inject as ONE block
-            # so .report-wrapper CSS is the actual parent of all content.
             report_html = md_to_html(report)
             st.markdown(
                 f'<div style="background:#111318;border:1px solid #1e2330;border-radius:12px;'
@@ -708,8 +668,8 @@ elif not st.session_state.is_running:
     st.markdown(
         '<div style="text-align:center;padding:4rem 2rem;color:#6b7890;">'
         '<div style="font-size:3.5rem;margin-bottom:1rem;">🔬</div>'
-        '<div style="font-family:Syne,sans-serif;font-size:1.3rem;font-weight:600;color:#2a3555;margin-bottom:0.5rem;">'
-        'Enter a research query to begin</div>'
+        '<div style="font-family:Syne,sans-serif;font-size:1.3rem;font-weight:600;'
+        'color:#2a3555;margin-bottom:0.5rem;">Enter a research query to begin</div>'
         '<div style="font-size:0.85rem;max-width:480px;margin:0 auto;line-height:1.7;">'
         'The assistant will plan your research, gather information from multiple sources, '
         'analyze the findings, and produce a comprehensive academic research paper — all automatically.'

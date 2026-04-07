@@ -5,10 +5,12 @@ from __future__ import annotations
 import re
 
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
-from langchain_ollama import ChatOllama
+# from langchain_ollama import ChatOllama
 
 from agents.state import ResearchState
-from config.settings import OLLAMA_BASE_URL, OLLAMA_MODEL
+# from config.settings import OLLAMA_BASE_URL, OLLAMA_MODEL
+from langchain_groq import ChatGroq
+from config.settings import GROQ_API_KEY, GROQ_MODEL
 
 # Short, directive prompt that works well with smaller models
 SYSTEM_PROMPT = """You are a Research Analyst. You will be given raw search results.
@@ -113,11 +115,17 @@ def _deduplicate_analysis(text: str) -> str:
 def analyst_node(state: ResearchState) -> ResearchState:
     """Analyze and synthesize the research results."""
 
-    llm = ChatOllama(
-        base_url=OLLAMA_BASE_URL,
-        model=OLLAMA_MODEL,
+    # llm = ChatOllama(
+    #     base_url=OLLAMA_BASE_URL,
+    #     model=OLLAMA_MODEL,
+    #     temperature=0.1,
+    #     num_predict=1024,   # Reduced from 1536 — less room for the model to ramble
+    # )
+    llm = ChatGroq(
+        model=GROQ_MODEL,
+        api_key=GROQ_API_KEY,
         temperature=0.1,
-        num_predict=1024,   # Reduced from 1536 — less room for the model to ramble
+        max_tokens=1024,
     )
 
     query = state["query"]

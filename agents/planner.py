@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
-from langchain_ollama import ChatOllama
+from langchain_groq import ChatGroq
 
 from agents.state import ResearchState
-from config.settings import OLLAMA_BASE_URL, OLLAMA_MODEL
+from config.settings import GROQ_API_KEY, GROQ_MODEL
 
-# Kept deliberately short — small models lose the plot with long system prompts
 SYSTEM_PROMPT = """You are a Research Planner. Given a research query, output a concise plan with EXACTLY these four sections:
 
 GOAL: One sentence describing what we want to learn.
@@ -29,14 +28,11 @@ Keep it short and specific. Do not add extra sections."""
 
 
 def planner_node(state: ResearchState) -> ResearchState:
-    """Generate a research plan for the given query."""
-
-    llm = ChatOllama(
-        base_url=OLLAMA_BASE_URL,
-        model=OLLAMA_MODEL,
+    llm = ChatGroq(
+        model=GROQ_MODEL,
+        api_key=GROQ_API_KEY,
         temperature=0.1,
-        # Limit output length — planners don't need long responses
-        num_predict=512,
+        max_tokens=512,
     )
 
     messages = [
@@ -48,8 +44,6 @@ def planner_node(state: ResearchState) -> ResearchState:
         response = llm.invoke(messages)
         plan = response.content.strip()
 
-        # Sanity check — if the model returned something very short or empty,
-        # generate a minimal fallback plan so downstream agents aren't starved
         if len(plan) < 50:
             plan = (
                 f"GOAL: Research {state['query']}.\n\n"
@@ -69,7 +63,6 @@ def planner_node(state: ResearchState) -> ResearchState:
             "messages": [AIMessage(content=f"📋 **Research Plan**\n\n{plan}", name="planner")],
         }
     except Exception as e:
-        # Don't stop the pipeline — use a minimal fallback plan
         fallback = (
             f"GOAL: Research {state['query']}.\n\n"
             f"SEARCHES:\n- {state['query']}\n- {state['query']} overview\n\n"

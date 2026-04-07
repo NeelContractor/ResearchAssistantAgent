@@ -7,10 +7,12 @@ import urllib.request
 import urllib.error
 
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
-from langchain_ollama import ChatOllama
+# from langchain_ollama import ChatOllama
 
 from agents.state import ResearchState
-from config.settings import OLLAMA_BASE_URL, OLLAMA_MODEL
+# from config.settings import OLLAMA_BASE_URL, OLLAMA_MODEL
+from langchain_groq import ChatGroq
+from config.settings import GROQ_API_KEY, GROQ_MODEL
 
 SYSTEM_PROMPT = """You are an Academic Research Writer. Write a formal research paper.
 
@@ -308,11 +310,17 @@ def _ensure_appendix(report: str, validated: list[dict]) -> str:
 def writer_node(state: ResearchState) -> ResearchState:
     """Produce the final research paper grounded in actual research data."""
 
-    llm = ChatOllama(
-        base_url=OLLAMA_BASE_URL,
-        model=OLLAMA_MODEL,
+    # llm = ChatOllama(
+    #     base_url=OLLAMA_BASE_URL,
+    #     model=OLLAMA_MODEL,
+    #     temperature=0.3,
+    #     num_predict=3000,
+    # )
+    llm = ChatGroq(
+        model=GROQ_MODEL,
+        api_key=GROQ_API_KEY,
         temperature=0.3,
-        num_predict=3000,
+        max_tokens=3000,
     )
 
     query = state["query"]

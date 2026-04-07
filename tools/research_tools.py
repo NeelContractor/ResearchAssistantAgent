@@ -304,7 +304,7 @@ def calculator(expression: str) -> str:
 # 6. TEXT SUMMARIZER (calls local ollama directly)
 @tool
 def summarize_text(text: str, style: str = "concise") -> str:
-    """Summarize a long piece of text using the local Ollama model.
+    """Summarize a long piece of text.
 
     Args:
         text: The text to summarize (up to ~4000 chars).
@@ -313,7 +313,8 @@ def summarize_text(text: str, style: str = "concise") -> str:
     Returns:
         A summarized version of the text.
     """
-    from config.settings import OLLAMA_BASE_URL, OLLAMA_MODEL
+    from config.settings import GROQ_API_KEY, GROQ_MODEL
+    from langchain_groq import ChatGroq
 
     style_instructions = {
         "concise": "Write a concise 2-3 sentence summary.",
@@ -322,16 +323,10 @@ def summarize_text(text: str, style: str = "concise") -> str:
     }
     instruction = style_instructions.get(style, style_instructions["concise"])
 
-    prompt = f"{instruction}\n\nText to summarize:\n{text[:4000]}"
-
     try:
-        response = requests.post(
-            f"{OLLAMA_BASE_URL}/api/generate",
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            timeout=60,
-        )
-        response.raise_for_status()
-        return response.json().get("response", "No response from Ollama.")
+        llm = ChatGroq(model=GROQ_MODEL, api_key=GROQ_API_KEY, temperature=0)
+        response = llm.invoke(f"{instruction}\n\nText to summarize:\n{text[:4000]}")
+        return response.content
     except Exception as e:
         return f"Summarization error: {e}"
 
